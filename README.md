@@ -1,20 +1,20 @@
 # woob-deploy
 
-Script d'automatisation pour mettre à jour la dépendance Woob et créer une release bugfix sur le dépôt backend Budgea.
+Automation script to upgrade the Woob dependency and cut a Budgea bugfix release on the backend repository.
 
-## Prérequis
+## Prerequisites
 
-### Outils systeme requis
+### Required system tools
 
-| Outil       | Usage                                    |
-|-------------|------------------------------------------|
-| `git`       | Gestion des branches, commits et tags    |
-| `make`      | Exécution de `make update-lock/woob`     |
-| `uv`        | Gestionnaire de paquets Python           |
-| `debchange` | Mise à jour du changelog Debian (`devscripts`) |
-| `gh`        | Création des PRs GitHub (optionnel)      |
+| Tool        | Purpose                                          |
+|-------------|--------------------------------------------------|
+| `git`       | Branch management, commits and tags              |
+| `make`      | Runs `make update-lock/woob`                     |
+| `uv`        | Python package manager                           |
+| `debchange` | Updates the Debian changelog (`devscripts`)      |
+| `gh`        | Creates GitHub PRs (optional)                    |
 
-Installation des outils Debian :
+Install Debian tools:
 ```bash
 apt install devscripts
 ```
@@ -29,54 +29,54 @@ cd woob_deploy
 uv sync
 ```
 
-## Utilisation
+## Usage
 
-### Commande de base (version auto-incrementée)
+### Basic command (auto-incremented version)
 
-Incrémente automatiquement le patch de la version courante (`11.8.18` → `11.8.19`) :
+Automatically increments the patch of the current version (`11.8.18` → `11.8.19`):
 
 ```bash
 uv run woob-update-release --repo ~/dev/backend
 ```
 
-### Spécifier une version cible
+### Specify a target version
 
 ```bash
 uv run woob-update-release --repo ~/dev/backend --version 11.8.19
 ```
 
-### Sans installation (exécution directe)
+### Without installation (direct execution)
 
 ```bash
 uv run python woob_update_release.py --repo ~/dev/backend
 ```
 
-## Workflow automatisé
+## Automated workflow
 
-Le script exécute 6 étapes dans l'ordre :
+The script runs 6 steps in sequence:
 
-| Etape | Description |
-|-------|-------------|
-| **1 - Initialisation** | Vérifie que le working tree est propre, checkout `master`, pull, crée la branche `hotfix/X.Y.Z` |
-| **2 - Version bump** | Met à jour la version dans `pyproject.toml`, `setup.py`, `budgea/__init__.py` |
-| **3 - Mise à jour Woob** | Lance `make update-lock/woob`, commit le `uv.lock` avec la nouvelle version Woob |
-| **4 - Changelog Debian** | Génère une entrée dans `debian/changelog` via `debchange`, pause pour relecture |
-| **5 - Finalisation** | Commit les fichiers de release, crée le tag Git, propose le push de la branche et du tag |
-| **6 - Pull Requests** | (Optionnel) Crée les PRs GitHub vers `master` et `develop` via `gh` |
+| Step | Description |
+|------|-------------|
+| **1 - Initialization** | Checks the working tree is clean, checks out `master`, pulls, creates branch `hotfix/X.Y.Z` |
+| **2 - Version bump** | Updates the version in `pyproject.toml`, `setup.py`, `budgea/__init__.py` |
+| **3 - Woob upgrade** | Runs `make update-lock/woob`, commits `uv.lock` with the new Woob version |
+| **4 - Debian changelog** | Generates an entry in `debian/changelog` via `debchange`, pauses for review |
+| **5 - Finalize** | Commits the release files, creates the Git tag, prompts to push the branch and tag |
+| **6 - Pull Requests** | (Optional) Creates GitHub PRs to `master` and `develop` via `gh` |
 
-## Options CLI
+## CLI options
 
 ```
 usage: woob-update-release [-h] --repo PATH [--version X.Y.Z]
 
 options:
-  --repo PATH      Chemin vers la racine du dépôt backend git (obligatoire)
-  --version X.Y.Z  Version cible (défaut : auto-increment du patch courant)
+  --repo PATH      Path to the root of the backend git repository (required)
+  --version X.Y.Z  Target version (default: auto-increment current patch)
 ```
 
-## Structure du dépôt backend attendue
+## Expected backend repository structure
 
-Le script suppose que le dépôt backend contient :
+The script assumes the backend repository contains:
 
 ```
 backend/
@@ -87,14 +87,14 @@ backend/
 └── uv.lock
 ```
 
-## Variables d'environnement pour le changelog Debian
+## Debian changelog environment variables
 
-Le script récupère automatiquement `user.email` et `user.name` depuis la config Git. En leur absence, il utilise les valeurs par défaut :
+The script automatically reads `user.email` and `user.name` from the Git config. If not set, it falls back to:
 
 - `DEBEMAIL=ci@powens.com`
 - `DEBFULLNAME=Powens CI`
 
-Pour les surcharger :
+To override them:
 ```bash
 DEBEMAIL=you@example.com DEBFULLNAME="Your Name" uv run woob-update-release --repo ~/dev/backend
 ```
