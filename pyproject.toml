@@ -1,0 +1,13 @@
+[project]
+name = "woob-deploy"
+version = "0.1.0"
+description = "Release automation script for Woob dependency upgrades"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+woob-update-release = "woob_update_release:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
