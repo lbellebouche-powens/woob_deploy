@@ -6,18 +6,12 @@ Automation script to upgrade the Woob dependency and cut a Budgea bugfix release
 
 ### Required system tools
 
-| Tool        | Purpose                                          |
-|-------------|--------------------------------------------------|
-| `git`       | Branch management, commits and tags              |
-| `make`      | Runs `make update-lock/woob`                     |
-| `uv`        | Python package manager                           |
-| `debchange` | Updates the Debian changelog (`devscripts`)      |
-| `gh`        | Creates GitHub PRs (optional)                    |
-
-Install Debian tools:
-```bash
-apt install devscripts
-```
+| Tool  | Purpose                             |
+|-------|-------------------------------------|
+| `git` | Branch management, commits and tags |
+| `make` | Runs `make update-lock/woob`       |
+| `uv`  | Python package manager              |
+| `gh`  | Creates GitHub PRs (optional)       |
 
 ### Python >= 3.9
 
@@ -60,7 +54,7 @@ The script runs 6 steps in sequence:
 | **1 - Initialization** | Checks the working tree is clean, checks out `master`, pulls, creates branch `hotfix/X.Y.Z` |
 | **2 - Version bump** | Updates the version in `pyproject.toml`, `setup.py`, `budgea/__init__.py` |
 | **3 - Woob upgrade** | Runs `make update-lock/woob`, commits `uv.lock` with the new Woob version |
-| **4 - Debian changelog** | Generates an entry in `debian/changelog` via `debchange`, pauses for review |
+| **4 - Debian changelog** | Prepends an entry directly into `debian/changelog`, pauses for review |
 | **5 - Finalize** | Commits the release files, creates the Git tag, prompts to push the branch and tag |
 | **6 - Pull Requests** | (Optional) Creates GitHub PRs to `master` and `develop` via `gh` |
 
@@ -87,14 +81,12 @@ backend/
 └── uv.lock
 ```
 
-## Debian changelog environment variables
+## Debian changelog maintainer
 
-The script automatically reads `user.email` and `user.name` from the Git config. If not set, it falls back to:
+The script reads `user.email` and `user.name` from the Git config to sign the changelog entry. If not set, it falls back to `ci@powens.com` / `Powens CI`.
 
-- `DEBEMAIL=ci@powens.com`
-- `DEBFULLNAME=Powens CI`
-
-To override them:
+To use a different identity, set them in your Git config:
 ```bash
-DEBEMAIL=you@example.com DEBFULLNAME="Your Name" uv run woob-update-release --repo ~/dev/backend
+git config user.name "Your Name"
+git config user.email "you@example.com"
 ```
