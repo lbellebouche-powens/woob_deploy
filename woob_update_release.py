@@ -167,7 +167,9 @@ class WoobUpdateRelease:
         :raises SystemExit: if the format is invalid
         """
         if not re.match(r"^\d+\.\d+\.\d+$", version):
-            log.error("Invalid version format: '%s'. Expected MAJOR.MINOR.PATCH", version)
+            log.error(
+                "Invalid version format: '%s'. Expected MAJOR.MINOR.PATCH", version
+            )
             sys.exit(1)
 
     def _auto_increment_version(self) -> str:
@@ -326,7 +328,9 @@ class WoobUpdateRelease:
                 origins.append("locally")
             if remote_exists:
                 origins.append("on remote")
-            log.warning("Branch '%s' already exists %s.", branch_name, " and ".join(origins))
+            log.warning(
+                "Branch '%s' already exists %s.", branch_name, " and ".join(origins)
+            )
             if not self.ask_confirm(
                 f"Resume on existing branch '{branch_name}'? "
                 "(Answer 'n' to abort and inspect it manually.)"
@@ -336,7 +340,9 @@ class WoobUpdateRelease:
             if local_exists:
                 self.run_cmd(["git", "checkout", branch_name])
             else:
-                self.run_cmd(["git", "checkout", "-b", branch_name, f"origin/{branch_name}"])
+                self.run_cmd(
+                    ["git", "checkout", "-b", branch_name, f"origin/{branch_name}"]
+                )
             return
 
         log.info("Creating branch '%s' from master.", branch_name)
@@ -379,7 +385,9 @@ class WoobUpdateRelease:
         log.info("Woob version after upgrade: %s", self.woob_version_after or "unknown")
 
         if self.woob_version_after and self.woob_version_after != version_before:
-            commit_msg = f"feat(backend): Update woob to version {self.woob_version_after}"
+            commit_msg = (
+                f"feat(backend): Update woob to version {self.woob_version_after}"
+            )
         else:
             commit_msg = "feat(backend): Update woob in uv.lock file"
 
@@ -391,8 +399,12 @@ class WoobUpdateRelease:
         """Step 4: Prepend a Debian changelog entry directly into ``debian/changelog``."""
         self._step_header(4, 5, "Debian Changelog")
 
-        git_email = self.run_cmd(["git", "config", "user.email"], capture=True, check=False)
-        git_name = self.run_cmd(["git", "config", "user.name"], capture=True, check=False)
+        git_email = self.run_cmd(
+            ["git", "config", "user.email"], capture=True, check=False
+        )
+        git_name = self.run_cmd(
+            ["git", "config", "user.name"], capture=True, check=False
+        )
         maintainer_email = (
             git_email.stdout.strip()
             if git_email.returncode == 0 and git_email.stdout.strip()
@@ -416,7 +428,11 @@ class WoobUpdateRelease:
         )
 
         changelog_path = self.root_dir / "debian" / "changelog"
-        existing = changelog_path.read_text(encoding="utf-8") if changelog_path.exists() else ""
+        existing = (
+            changelog_path.read_text(encoding="utf-8")
+            if changelog_path.exists()
+            else ""
+        )
         changelog_path.write_text(entry + existing, encoding="utf-8")
         log.info("debian/changelog updated.")
         self.ask_continue("Review debian/changelog, then continue.")
@@ -538,11 +554,17 @@ class WoobUpdateRelease:
             log.info("Creating PR: %s", title)
             self.run_cmd(
                 [
-                    "gh", "pr", "create",
-                    "--base", target,
-                    "--head", branch_name,
-                    "--title", title,
-                    "--body", pr_body,
+                    "gh",
+                    "pr",
+                    "create",
+                    "--base",
+                    target,
+                    "--head",
+                    branch_name,
+                    "--title",
+                    title,
+                    "--body",
+                    pr_body,
                 ],
             )
             log.info("PR to '%s' created.", target)
