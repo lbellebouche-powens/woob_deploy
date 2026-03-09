@@ -5,12 +5,13 @@ Automates the following workflow:
   1. Initialization   — increment patch version, prepare branch from master
   2. Woob upgrade     — run ``make update-lock/woob``, commit if lock changed
   3. Version bump     — update version in all source files
-  4. Debian changelog — generate entry via debchange
+  4. Debian changelog — prepend entry directly into debian/changelog
   5. Finalize         — commit, tag, push (with confirmation)
   6. Create PRs       — create PRs on backend repository from the same created hotfix branch to master and develop (optionnal)
 """
 
 import argparse
+from email.utils import formatdate
 import logging
 import os
 import re
@@ -387,36 +388,36 @@ class WoobUpdateRelease:
         log.info("Committed: %s", commit_msg)
 
     def step4_debian_changelog(self) -> None:
-        """Step 4: Create a Debian changelog entry with ``debchange``."""
+        """Step 4: Prepend a Debian changelog entry directly into ``debian/changelog``."""
         self._step_header(4, 5, "Debian Changelog")
 
         git_email = self.run_cmd(["git", "config", "user.email"], capture=True, check=False)
         git_name = self.run_cmd(["git", "config", "user.name"], capture=True, check=False)
-        env = {
-            "DEBEMAIL": (
-                git_email.stdout.strip()
-                if git_email.returncode == 0 and git_email.stdout.strip()
-                else "ci@powens.com"
-            ),
-            "DEBFULLNAME": (
-                git_name.stdout.strip()
-                if git_name.returncode == 0 and git_name.stdout.strip()
-                else "Powens CI"
-            ),
-        }
-        log.info("Maintainer: %s <%s>", env["DEBFULLNAME"], env["DEBEMAIL"])
-
-        self.run_cmd(
-            [
-                "debchange",
-                "-v", self.new_version,
-                "--distribution", "unstable",
-                "--force-distribution",
-                "New Upstream Release woob in `uv.lock` file",
-                "-b",
-            ],
-            env=env,
+        maintainer_email = (
+            git_email.stdout.strip()
+            if git_email.returncode == 0 and git_email.stdout.strip()
+            else "ci@powens.com"
         )
+        maintainer_name = (
+            git_name.stdout.strip()
+            if git_name.returncode == 0 and git_name.stdout.strip()
+            else "Powens CI"
+        )
+        log.info("Maintainer: %s <%s>", maintainer_name, maintainer_email)
+
+        date_str = formatdate(localtime=True)
+        entry = (
+            f"budgea ({self.new_version}) unstable; urgency=medium\n"
+            f"\n"
+            f"  * New Upstream Release woob in `uv.lock` file\n"
+            f"\n"
+            f" -- {maintainer_name} <{maintainer_email}>  {date_str}\n"
+            f"\n"
+        )
+
+        changelog_path = self.root_dir / "debian" / "changelog"
+        existing = changelog_path.read_text(encoding="utf-8") if changelog_path.exists() else ""
+        changelog_path.write_text(entry + existing, encoding="utf-8")
         log.info("debian/changelog updated.")
         self.ask_continue("Review debian/changelog, then continue.")
 
@@ -493,7 +494,7 @@ class WoobUpdateRelease:
 
         :raises SystemExit: if any required tool is missing
         """
-        required = ["git", "make", "uv", "debchange"]
+        required = ["git", "make", "uv"]
         missing = [cmd for cmd in required if shutil.which(cmd) is None]
         if missing:
             log.error("Missing required tools: %s", ", ".join(missing))
