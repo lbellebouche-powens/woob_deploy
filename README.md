@@ -6,21 +6,19 @@ Automation script to upgrade the Woob dependency and cut a Budgea bugfix release
 
 ### Required system tools
 
-| Tool  | Purpose                             |
-|-------|-------------------------------------|
-| `git` | Branch management, commits and tags |
-| `make` | Runs `make update-lock/woob`       |
-| `uv`  | Python package manager              |
-| `gh`  | Creates GitHub PRs (optional)       |
+| Tool   | Purpose                             |
+|--------|-------------------------------------|
+| `git`  | Branch management, commits and tags |
+| `make` | Runs `make update-lock/woob`        |
+| `uv`   | Used by `make update-lock/woob` in the backend repo |
+| `gh`   | Creates GitHub PRs (optional)       |
 
 ### Python >= 3.9
 
 ## Installation
 
 ```bash
-git clone <repo-url> woob_deploy
-cd woob_deploy
-uv sync
+git clone <repo-url> ~/dev/woob_deploy
 ```
 
 ## Usage
@@ -30,19 +28,13 @@ uv sync
 Automatically increments the patch of the current version (`11.8.18` → `11.8.19`):
 
 ```bash
-uv run woob-update-release --repo ~/dev/backend
+python3 ~/dev/woob_deploy/woob_update_release.py --repo ~/dev/backend
 ```
 
 ### Specify a target version
 
 ```bash
-uv run woob-update-release --repo ~/dev/backend --version 11.8.19
-```
-
-### Without installation (direct execution)
-
-```bash
-uv run python woob_update_release.py --repo ~/dev/backend
+python3 ~/dev/woob_deploy/woob_update_release.py --repo ~/dev/backend --version 11.8.19
 ```
 
 ## Automated workflow
@@ -61,7 +53,7 @@ The script runs 6 steps in sequence:
 ## CLI options
 
 ```
-usage: woob-update-release [-h] --repo PATH [--version X.Y.Z]
+usage: woob_update_release.py [-h] --repo PATH [--version X.Y.Z]
 
 options:
   --repo PATH      Path to the root of the backend git repository (required)
