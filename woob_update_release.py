@@ -2,7 +2,7 @@
 """Release script for Woob dependency upgrades.
 
 Automates the following workflow:
-  1. Initialization   — increment patch version, prepare branch from master
+  1. Initialization   — prune remote refs, increment patch version, prepare branch from master
   2. Woob upgrade     — run ``make update-lock/woob``, commit if lock changed
   3. Version bump     — update version in all source files
   4. Debian changelog — prepend entry directly into debian/changelog
@@ -300,8 +300,13 @@ class WoobUpdateRelease:
             sys.exit(1)
         log.info("Working tree is clean.")
 
-        self.run_cmd(["git", "checkout", "master"])
-        self.run_cmd(["git", "pull", "--ff-only"])
+        log.info("Pruning stale remote-tracking branches.")
+        self.run_cmd(["git", "fetch", "--prune"])
+
+        for branch in ("develop", "master"):
+            self.run_cmd(["git", "checkout", branch])
+            self.run_cmd(["git", "reset", "--hard", f"origin/{branch}"])
+            log.info("Branch '%s' reset to origin/%s.", branch, branch)
 
         branch_name = f"hotfix/{self.new_version}"
 
