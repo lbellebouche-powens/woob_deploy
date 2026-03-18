@@ -135,8 +135,8 @@ class WoobUpdateRelease:
 
     def __init__(self, root_dir: Path, new_version: Optional[str] = None) -> None:
         self.root_dir = root_dir
-        self.new_version = new_version or self._auto_increment_version()
-        self._validate_version(self.new_version)
+        self._explicit_version = new_version
+        self.new_version: str = ""  # resolved in step1 after master is up to date
         self.woob_version_after: Optional[str] = None
 
     # ------------------------------------------------------------------
@@ -307,6 +307,10 @@ class WoobUpdateRelease:
             self.run_cmd(["git", "checkout", branch])
             self.run_cmd(["git", "reset", "--hard", f"origin/{branch}"])
             log.info("Branch '%s' reset to origin/%s.", branch, branch)
+
+        # Resolve version now that master is up to date with origin.
+        self.new_version = self._explicit_version or self._auto_increment_version()
+        self._validate_version(self.new_version)
 
         branch_name = f"hotfix/{self.new_version}"
 
