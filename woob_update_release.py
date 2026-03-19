@@ -110,7 +110,7 @@ def _parse_woob_version(uv_lock_path: Path) -> Optional[str]:
     content = uv_lock_path.read_text(encoding="utf-8")
     blocks = re.split(r"\n(?=\[\[package\]\])", content)
     for block in blocks:
-        if 'name = "woob-powens"' in block:
+        if re.search(r'^name\s*=\s*"woob-powens"', block, re.MULTILINE):
             m = re.search(r'^version\s*=\s*"([^"]+)"', block, re.MULTILINE)
             if m:
                 return m.group(1)
