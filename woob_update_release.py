@@ -2,6 +2,7 @@
 """Release script for Woob dependency upgrades.
 
 Automates the following workflow:
+  0. (optional, --full) Forge a Woob release — run dev_tools/release.sh in ~/dev/woob
   1. Initialization   — prune remote refs, increment patch version, prepare branch from master
   2. Woob upgrade     — run ``make update-lock/woob``, commit if lock changed
   3. Version bump     — update version in all source files
@@ -296,9 +297,11 @@ class WoobUpdateRelease:
 
         result = self.run_cmd(["git", "status", "--porcelain"], capture=True)
         if result.stdout.strip():
-            log.error("Working tree is not clean. Commit or stash changes first.")
+            log.error(
+                "Backend repository working tree is not clean. Commit or stash changes first."
+            )
             sys.exit(1)
-        log.info("Working tree is clean.")
+        log.info("Backend working tree is clean.")
 
         log.info("Pruning stale remote-tracking branches.")
         self.run_cmd(["git", "fetch", "--prune"])
@@ -593,6 +596,41 @@ class WoobUpdateRelease:
 
 
 # ---------------------------------------------------------------------------
+# Optional pre-step: forge a Woob release
+# ---------------------------------------------------------------------------
+
+WOOB_REPO = Path("~/dev/woob").expanduser()
+WOOB_RELEASE_SCRIPT = WOOB_REPO / "dev_tools" / "release.sh"
+
+
+def run_woob_release() -> None:
+    """Run ~/dev/woob/dev_tools/release.sh from the woob repo root.
+
+    The script manages its own ``cd`` internally, but we explicitly set
+    ``cwd`` to the woob repo root to prevent any accidental side-effects
+    when called from an unrelated directory.
+
+    :raises SystemExit: if the woob repo or script is missing, or the script fails
+    """
+    if not WOOB_REPO.is_dir():
+        log.error("Woob repository not found: %s", WOOB_REPO)
+        sys.exit(1)
+    if not WOOB_RELEASE_SCRIPT.is_file():
+        log.error("Woob release script not found: %s", WOOB_RELEASE_SCRIPT)
+        sys.exit(1)
+
+    log.info("Running Woob release script: %s", WOOB_RELEASE_SCRIPT)
+    result = subprocess.run(
+        [str(WOOB_RELEASE_SCRIPT)],
+        cwd=str(WOOB_REPO),
+    )
+    if result.returncode != 0:
+        log.error("Woob release script failed (exit code %d).", result.returncode)
+        sys.exit(result.returncode)
+    log.info("Woob release forged successfully.")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -603,19 +641,25 @@ def main() -> None:
         description="Upgrade Woob and cut a Budgea bugfix release.",
         epilog=textwrap.dedent("""\
             Examples:
-              # Auto-increment patch version (11.8.18 → 11.8.19):
-              python woob_update_release.py --repo ~/dev/backend
+              # Auto-increment patch version (defaults to ~/dev/backend):
+              python woob_update_release.py
+
+              # Full workflow: forge a Woob release first, then update backend:
+              python woob_update_release.py --full
 
               # Specify version explicitly:
-              python woob_update_release.py --repo ~/dev/backend --version 11.8.19
+              python woob_update_release.py --version 11.8.19
+
+              # Use a different repo path:
+              python woob_update_release.py --repo ~/dev/backend-fork
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--repo",
-        required=True,
+        default="~/dev/backend",
         metavar="PATH",
-        help="Path to the root of the backend git repository",
+        help="Path to the backend git repository (default: ~/dev/backend)",
     )
     parser.add_argument(
         "--version",
@@ -623,12 +667,20 @@ def main() -> None:
         metavar="X.Y.Z",
         help="Target version (default: auto-increment current patch version)",
     )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Forge a Woob release (~/dev/woob/dev_tools/release.sh) before updating backend",
+    )
     args = parser.parse_args()
 
     root_dir = Path(args.repo).expanduser().resolve()
     if not root_dir.is_dir():
         log.error("Repository path does not exist: %s", root_dir)
         sys.exit(1)
+
+    if args.full:
+        run_woob_release()
 
     manager = WoobUpdateRelease(root_dir=root_dir, new_version=args.version)
     try:
