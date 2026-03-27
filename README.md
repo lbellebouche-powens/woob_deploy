@@ -23,26 +23,41 @@ git clone <repo-url> ~/dev/woob_deploy
 
 ## Usage
 
+The script can be run from any directory.
+
 ### Basic command (auto-incremented version)
 
 Automatically increments the patch of the current version (`11.8.18` → `11.8.19`):
 
 ```bash
-python3 ~/dev/woob_deploy/woob_update_release.py --repo ~/dev/backend
+python3 ~/dev/woob_deploy/woob_update_release.py
+```
+
+### Full workflow (forge a Woob release first)
+
+Runs `~/dev/woob/dev_tools/release.sh` before the backend update:
+
+```bash
+python3 ~/dev/woob_deploy/woob_update_release.py --full
 ```
 
 ### Specify a target version
 
 ```bash
-python3 ~/dev/woob_deploy/woob_update_release.py --repo ~/dev/backend --version 11.8.19
+python3 ~/dev/woob_deploy/woob_update_release.py --version 11.8.19
+```
+
+### Use a different backend repository path
+
+```bash
+python3 ~/dev/woob_deploy/woob_update_release.py --repo ~/dev/backend-fork
 ```
 
 ## Automated workflow
 
-The script runs 6 steps in sequence:
-
 | Step | Description |
 |------|-------------|
+| **0 - Woob release** | (`--full` only) Forges a Woob release by running `dev_tools/release.sh` in `~/dev/woob` |
 | **1 - Initialization** | Checks the working tree is clean, checks out `master`, pulls, creates branch `hotfix/X.Y.Z` |
 | **2 - Version bump** | Updates the version in `pyproject.toml`, `setup.py`, `budgea/__init__.py` |
 | **3 - Woob upgrade** | Runs `make update-lock/woob`, commits `uv.lock` with the new Woob version |
@@ -53,11 +68,12 @@ The script runs 6 steps in sequence:
 ## CLI options
 
 ```
-usage: woob_update_release.py [-h] --repo PATH [--version X.Y.Z]
+usage: woob_update_release.py [-h] [--repo PATH] [--version X.Y.Z] [--full]
 
 options:
-  --repo PATH      Path to the root of the backend git repository (required)
+  --repo PATH      Path to the backend git repository (default: ~/dev/backend)
   --version X.Y.Z  Target version (default: auto-increment current patch)
+  --full           Forge a Woob release (~/dev/woob/dev_tools/release.sh) before updating backend
 ```
 
 ## Expected backend repository structure
