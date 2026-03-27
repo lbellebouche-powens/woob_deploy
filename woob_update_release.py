@@ -13,6 +13,7 @@ Automates the following workflow:
 
 import argparse
 from email.utils import formatdate
+import json
 import logging
 import os
 import re
@@ -20,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -630,6 +632,84 @@ def run_woob_release() -> None:
     log.info("Woob release forged successfully.")
 
 
+def wait_for_woob_pipeline() -> None:
+    """Poll GitHub Actions until the pipeline triggered by the latest woob tag completes.
+
+    Resolves the most recent tag on ``master`` in WOOB_REPO, finds the corresponding
+    Actions run (polling up to 3 minutes for it to start), then streams progress via
+    ``gh run watch`` until the run finishes.
+
+    :raises SystemExit: if the run cannot be found, or if the pipeline fails
+    """
+    if shutil.which("gh") is None:
+        log.error("'gh' CLI is required for --full. Install it from https://cli.github.com/")
+        sys.exit(1)
+
+    tag = subprocess.run(
+        ["git", "describe", "--tags", "--abbrev=0", "master"],
+        cwd=str(WOOB_REPO),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    sha = subprocess.run(
+        ["git", "rev-parse", f"{tag}^{{}}"],
+        cwd=str(WOOB_REPO),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    log.info(
+        "Checking GitHub Actions pipeline for woob tag '%s' (%s)...", tag, sha[:8]
+    )
+
+    # Actions may take a few seconds to register the run after the tag push.
+    run_id: Optional[int] = None
+    for attempt in range(18):  # up to 3 minutes (18 × 10 s)
+        result = subprocess.run(
+            [
+                "gh", "run", "list",
+                "--commit", sha,
+                "--json", "databaseId,status,conclusion",
+                "--limit", "1",
+            ],
+            cwd=str(WOOB_REPO),
+            capture_output=True,
+            text=True,
+        )
+        runs: list = (
+            json.loads(result.stdout)
+            if result.returncode == 0 and result.stdout.strip()
+            else []
+        )
+        if runs:
+            run_id = runs[0]["databaseId"]
+            break
+        log.info("Waiting for pipeline to start... (%d/18)", attempt + 1)
+        time.sleep(10)
+
+    if run_id is None:
+        log.error(
+            "No GitHub Actions run found for woob tag '%s' after 3 minutes.", tag
+        )
+        sys.exit(1)
+
+    log.info("Found pipeline run #%d — waiting for completion...", run_id)
+    result = subprocess.run(
+        ["gh", "run", "watch", str(run_id), "--exit-status"],
+        cwd=str(WOOB_REPO),
+    )
+    if result.returncode != 0:
+        log.error(
+            "Woob pipeline FAILED for tag '%s'. Aborting backend hotfix.", tag
+        )
+        sys.exit(result.returncode)
+
+    log.info("Woob pipeline passed for tag '%s'.", tag)
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -681,6 +761,7 @@ def main() -> None:
 
     if args.full:
         run_woob_release()
+        wait_for_woob_pipeline()
 
     manager = WoobUpdateRelease(root_dir=root_dir, new_version=args.version)
     try:

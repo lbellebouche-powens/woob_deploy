@@ -11,7 +11,7 @@ Automation script to upgrade the Woob dependency and cut a Budgea bugfix release
 | `git`  | Branch management, commits and tags |
 | `make` | Runs `make update-lock/woob`        |
 | `uv`   | Used by `make update-lock/woob` in the backend repo |
-| `gh`   | Creates GitHub PRs (optional)       |
+| `gh`   | Required for `--full` (pipeline check); optional otherwise (GitHub PRs) |
 
 ### Python >= 3.9
 
@@ -57,7 +57,7 @@ python3 ~/dev/woob_deploy/woob_update_release.py --repo ~/dev/backend-fork
 
 | Step | Description |
 |------|-------------|
-| **0 - Woob release** | (`--full` only) Forges a Woob release by running `dev_tools/release.sh` in `~/dev/woob` |
+| **0 - Woob release** | (`--full` only) Forges a Woob release by running `dev_tools/release.sh` in `~/dev/woob`, then waits for the GitHub Actions tag pipeline to pass before continuing |
 | **1 - Initialization** | Checks the working tree is clean, checks out `master`, pulls, creates branch `hotfix/X.Y.Z` |
 | **2 - Version bump** | Updates the version in `pyproject.toml`, `setup.py`, `budgea/__init__.py` |
 | **3 - Woob upgrade** | Runs `make update-lock/woob`, commits `uv.lock` with the new Woob version |
