@@ -566,21 +566,42 @@ class WoobUpdateRelease:
         for target in ("master", "develop"):
             title = f"hotfix/{self.new_version} → {target}: Budgea {self.new_version}"
             log.info("Creating PR: %s", title)
-            self.run_cmd(
-                [
-                    "gh",
-                    "pr",
-                    "create",
-                    "--base",
-                    target,
-                    "--head",
-                    branch_name,
-                    "--title",
-                    title,
-                    "--body",
-                    pr_body,
-                ],
-            )
+            cmd = [
+                "gh",
+                "pr",
+                "create",
+                "--base",
+                target,
+                "--head",
+                branch_name,
+                "--title",
+                title,
+                "--body",
+                pr_body,
+            ]
+            max_attempts = 3
+            delay = 5
+            for attempt in range(1, max_attempts + 1):
+                result = self.run_cmd(cmd, check=False, capture=True)
+                if result.returncode == 0:
+                    break
+                output = (result.stdout or "") + (result.stderr or "")
+                if "502" in output and attempt < max_attempts:
+                    log.warning(
+                        "PR creation got a 502 (attempt %d/%d), retrying in %ds…",
+                        attempt,
+                        max_attempts,
+                        delay,
+                    )
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    log.error("Command failed (exit %d): %s", result.returncode, " ".join(cmd))
+                    if result.stdout:
+                        log.error("stdout: %s", result.stdout.strip())
+                    if result.stderr:
+                        log.error("stderr: %s", result.stderr.strip())
+                    sys.exit(1)
             log.info("PR to '%s' created.", target)
 
     def run(self) -> None:
