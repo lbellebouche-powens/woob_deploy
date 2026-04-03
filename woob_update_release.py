@@ -25,6 +25,9 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+from packaging.specifiers import SpecifierSet
+from packaging.version import Version
+
 
 VERSION_FILES = {
     "pyproject.toml": r'(version\s*=\s*")[^"]+(")',
@@ -626,6 +629,50 @@ WOOB_REPO = Path("~/dev/woob").expanduser()
 WOOB_RELEASE_SCRIPT = WOOB_REPO / "dev_tools" / "release.sh"
 
 
+def check_uv_version_for_woob() -> None:
+    """Verify the installed uv satisfies the ``required-version`` in ~/dev/woob/pyproject.toml.
+
+    :raises SystemExit: if the constraint is not met or uv cannot be found
+    """
+    pyproject = WOOB_REPO / "pyproject.toml"
+    if not pyproject.is_file():
+        log.warning("Woob pyproject.toml not found — skipping uv version check.")
+        return
+
+    content = pyproject.read_text()
+    m = re.search(r'required-version\s*=\s*"([^"]+)"', content)
+    if not m:
+        log.warning("No required-version in woob pyproject.toml — skipping uv version check.")
+        return
+
+    constraint = m.group(1)
+
+    if shutil.which("uv") is None:
+        log.error("'uv' not found in PATH — cannot check version constraint '%s'.", constraint)
+        sys.exit(1)
+
+    result = subprocess.run(["uv", "--version"], capture_output=True, text=True)
+    if result.returncode != 0:
+        log.error("Failed to run 'uv --version'.")
+        sys.exit(1)
+
+    ver_match = re.search(r"uv\s+(\d[\d.]+)", result.stdout)
+    if not ver_match:
+        log.error("Could not parse uv version from: %s", result.stdout.strip())
+        sys.exit(1)
+
+    uv_ver_str = ver_match.group(1)
+    if Version(uv_ver_str) not in SpecifierSet(constraint):
+        log.error(
+            "uv %s does not satisfy woob's required-version '%s'. Please upgrade or downgrade uv.",
+            uv_ver_str,
+            constraint,
+        )
+        sys.exit(1)
+
+    log.info("uv %s satisfies woob constraint '%s'.", uv_ver_str, constraint)
+
+
 def run_woob_release() -> None:
     """Run ~/dev/woob/dev_tools/release.sh from the woob repo root.
 
@@ -781,6 +828,7 @@ def main() -> None:
         sys.exit(1)
 
     if args.full:
+        check_uv_version_for_woob()
         run_woob_release()
         wait_for_woob_pipeline()
 
