@@ -135,13 +135,21 @@ class WoobUpdateRelease:
     :type root_dir: Path
     :param new_version: target version (auto-computed from current if None)
     :type new_version: Optional[str]
+    :param woob_version: explicit Woob tag to pin in pyproject.toml (optional)
+    :type woob_version: Optional[str]
     """
 
     TIMEOUT = 300
 
-    def __init__(self, root_dir: Path, new_version: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        root_dir: Path,
+        new_version: Optional[str] = None,
+        woob_version: Optional[str] = None,
+    ) -> None:
         self.root_dir = root_dir
         self._explicit_version = new_version
+        self.woob_version = woob_version
         self.new_version: str = ""  # resolved in step1 after master is up to date
         self.woob_version_after: Optional[str] = None
 
@@ -191,6 +199,62 @@ class WoobUpdateRelease:
         next_version = f"{major}.{minor}.{int(patch) + 1}"
         log.info("Current version: %s  →  New version: %s", current, next_version)
         return next_version
+
+    # ------------------------------------------------------------------
+    # Woob pyproject helpers
+    # ------------------------------------------------------------------
+
+    def _read_pyproject_woob_tag(self) -> Optional[str]:
+        """Return the current ``woob-powens`` tag from ``pyproject.toml``, or ``None``.
+
+        Returns ``None`` when the entry uses ``branch`` syntax instead of ``tag``.
+
+        :return: current tag string, or ``None`` if branch syntax is used
+        :rtype: Optional[str]
+        """
+        content = (self.root_dir / "pyproject.toml").read_text(encoding="utf-8")
+        m = re.search(
+            r'woob-powens\s*=\s*\{[^}]*tag\s*=\s*"([^"]+)"[^}]*\}', content
+        )
+        return m.group(1) if m else None
+
+    def _update_pyproject_woob_tag(self) -> None:
+        """Update the ``woob-powens`` tag in ``pyproject.toml`` to ``self.woob_version``.
+
+        The entry must already use ``tag = "..."`` syntax.  If it still uses
+        ``branch = "..."`` the script aborts with an explanatory message.
+
+        :raises SystemExit: if the entry is not tag-based or not found
+        """
+        pyproject = self.root_dir / "pyproject.toml"
+        content = pyproject.read_text(encoding="utf-8")
+
+        # Detect branch-based entry — abort early with a clear message.
+        if re.search(
+            r'woob-powens\s*=\s*\{[^}]*branch\s*=\s*"[^"]*"[^}]*\}', content
+        ):
+            log.error(
+                "pyproject.toml still uses 'branch = \"...\"' for woob-powens. "
+                "Switch it to 'tag = \"<version>\"' before using --woob-version."
+            )
+            sys.exit(1)
+
+        # Replace the existing tag value.
+        new_content, count = re.subn(
+            r'(woob-powens\s*=\s*\{[^}]*tag\s*=\s*")[^"]*(")',
+            rf"\g<1>{self.woob_version}\2",
+            content,
+        )
+        if count != 1:
+            log.error(
+                "Expected exactly 1 woob-powens tag entry in pyproject.toml, found %d. "
+                "Check the file manually.",
+                count,
+            )
+            sys.exit(1)
+
+        pyproject.write_text(new_content, encoding="utf-8")
+        log.info("pyproject.toml: woob-powens tag → %s", self.woob_version)
 
     # ------------------------------------------------------------------
     # Subprocess / I/O helpers
@@ -388,8 +452,30 @@ class WoobUpdateRelease:
             log.info("  Bumped %s → %s", rel_path, self.new_version)
 
     def step3_update_woob(self) -> None:
-        """Step 3: Upgrade Woob via ``make update-lock/woob``, commit ``uv.lock`` separately."""
+        """Step 3: Upgrade Woob via ``make update-lock/woob``, commit ``uv.lock`` separately.
+
+        When ``--woob-version`` is supplied the ``woob-powens`` tag in
+        ``pyproject.toml`` is updated to that value.
+
+        When ``--woob-version`` is omitted and the entry already uses tag
+        syntax, the patch component of the current tag is auto-incremented.
+
+        When ``--woob-version`` is omitted and the entry uses branch syntax,
+        ``pyproject.toml`` is left unchanged.
+        """
         self._step_header(3, 5, "Woob Upgrade")
+
+        if not self.woob_version:
+            current_tag = self._read_pyproject_woob_tag()
+            if current_tag:
+                major, minor, patch = current_tag.split(".")
+                self.woob_version = f"{major}.{minor}.{int(patch) + 1}"
+                log.info(
+                    "Auto-incremented woob tag: %s → %s", current_tag, self.woob_version
+                )
+
+        if self.woob_version:
+            self._update_pyproject_woob_tag()
 
         uv_lock = self.root_dir / "uv.lock"
         version_before = _parse_woob_version(uv_lock)
@@ -408,7 +494,10 @@ class WoobUpdateRelease:
         else:
             commit_msg = "feat(backend): Update woob in uv.lock file"
 
-        self.run_cmd(["git", "add", "uv.lock"])
+        files_to_stage = ["uv.lock"]
+        if self.woob_version:
+            files_to_stage.append("pyproject.toml")
+        self.run_cmd(["git", "add"] + files_to_stage)
         self.run_cmd(["git", "commit", "-m", commit_msg])
         log.info("Committed: %s", commit_msg)
 
@@ -798,6 +887,9 @@ def main() -> None:
               # Specify version explicitly:
               python woob_update_release.py --version 11.8.19
 
+              # Pin a specific Woob tag in pyproject.toml (tag syntax must already be set):
+              python woob_update_release.py --woob-version 3.6.329
+
               # Use a different repo path:
               python woob_update_release.py --repo ~/dev/backend-fork
         """),
@@ -816,6 +908,17 @@ def main() -> None:
         help="Target version (default: auto-increment current patch version)",
     )
     parser.add_argument(
+        "--woob-version",
+        default=None,
+        metavar="X.Y.Z",
+        help=(
+            "Woob tag to pin in pyproject.toml (e.g. 3.6.329). "
+            "Requires the woob-powens entry to already use tag syntax. "
+            "When omitted, pyproject.toml is left unchanged and "
+            "'make update-lock/woob' picks up the latest from the branch."
+        ),
+    )
+    parser.add_argument(
         "--full",
         action="store_true",
         help="Forge a Woob release (~/dev/woob/dev_tools/release.sh) before updating backend",
@@ -832,7 +935,11 @@ def main() -> None:
         run_woob_release()
         wait_for_woob_pipeline()
 
-    manager = WoobUpdateRelease(root_dir=root_dir, new_version=args.version)
+    manager = WoobUpdateRelease(
+        root_dir=root_dir,
+        new_version=args.version,
+        woob_version=args.woob_version,
+    )
     try:
         manager.run()
     except KeyboardInterrupt:
