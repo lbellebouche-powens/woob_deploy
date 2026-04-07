@@ -180,7 +180,11 @@ class WoobUpdateRelease:
         :type version: str
         :raises SystemExit: if the format is invalid
         """
-        if not re.match(r"^\d+\.\d+\.\d+$", version):
+        try:
+            version = Version(version)
+            if len(version.release) != 3:
+                raise ValueError
+        except Exception:
             log.error(
                 "Invalid version format: '%s'. Expected MAJOR.MINOR.PATCH", version
             )
@@ -204,30 +208,33 @@ class WoobUpdateRelease:
     # Woob pyproject helpers
     # ------------------------------------------------------------------
 
-    def _read_pyproject_woob_tag(self) -> Optional[str]:
-        """Return the current ``woob-powens`` tag from ``pyproject.toml``, or ``None``.
+    @staticmethod
+    def _parse_woob_tag(content: str) -> Optional[str]:
+        """Return the current ``woob-powens`` tag from pre-loaded pyproject.toml content.
 
         Returns ``None`` when the entry uses ``branch`` syntax instead of ``tag``.
 
+        :param content: text content of ``pyproject.toml``
+        :type content: str
         :return: current tag string, or ``None`` if branch syntax is used
         :rtype: Optional[str]
         """
-        content = (self.root_dir / "pyproject.toml").read_text(encoding="utf-8")
         m = re.search(
             r'woob-powens\s*=\s*\{[^}]*tag\s*=\s*"([^"]+)"[^}]*\}', content
         )
         return m.group(1) if m else None
 
-    def _update_pyproject_woob_tag(self) -> None:
+    def _update_pyproject_woob_tag(self, content: str) -> None:
         """Update the ``woob-powens`` tag in ``pyproject.toml`` to ``self.woob_version``.
 
         The entry must already use ``tag = "..."`` syntax.  If it still uses
         ``branch = "..."`` the script aborts with an explanatory message.
 
+        :param content: pre-loaded text content of ``pyproject.toml``
+        :type content: str
         :raises SystemExit: if the entry is not tag-based or not found
         """
         pyproject = self.root_dir / "pyproject.toml"
-        content = pyproject.read_text(encoding="utf-8")
 
         # Detect branch-based entry — abort early with a clear message.
         if re.search(
@@ -306,9 +313,7 @@ class WoobUpdateRelease:
                 log.error("stdout: %s", exc.stdout.strip())
             if capture and exc.stderr:
                 log.error("stderr: %s", exc.stderr.strip())
-            if check:
-                sys.exit(1)
-            raise
+            sys.exit(1)
 
     def ask_confirm(self, msg: str, *, default: bool = False) -> bool:
         """Prompt the user for a yes/no answer.
@@ -362,7 +367,7 @@ class WoobUpdateRelease:
 
     def step1_prepare_branch(self) -> None:
         """Step 1: Ensure clean tree, update master, create release branch."""
-        self._step_header(1, 5, "Initialization")
+        self._step_header(1, 6, "Initialization")
 
         result = self.run_cmd(["git", "status", "--porcelain"], capture=True)
         if result.stdout.strip():
@@ -431,7 +436,7 @@ class WoobUpdateRelease:
 
     def step2_version_bump(self) -> None:
         """Step 2: Bump version in ``pyproject.toml``, ``setup.py``, ``budgea/__init__.py``."""
-        self._step_header(2, 5, "Version Bump")
+        self._step_header(2, 6, "Version Bump")
 
         for rel_path, pattern in VERSION_FILES.items():
             filepath = self.root_dir / rel_path
@@ -463,19 +468,31 @@ class WoobUpdateRelease:
         When ``--woob-version`` is omitted and the entry uses branch syntax,
         ``pyproject.toml`` is left unchanged.
         """
-        self._step_header(3, 5, "Woob Upgrade")
+        self._step_header(3, 6, "Woob Upgrade")
+
+        pyproject_content: Optional[str] = None
 
         if not self.woob_version:
-            current_tag = self._read_pyproject_woob_tag()
+            pyproject_content = (self.root_dir / "pyproject.toml").read_text(encoding="utf-8")
+            current_tag = self._parse_woob_tag(pyproject_content)
             if current_tag:
-                major, minor, patch = current_tag.split(".")
+                parts = current_tag.split(".")
+                if len(parts) != 3 or not all(p.isdigit() for p in parts):
+                    log.error(
+                        "Unexpected woob tag format: '%s'. Expected MAJOR.MINOR.PATCH",
+                        current_tag,
+                    )
+                    sys.exit(1)
+                major, minor, patch = parts
                 self.woob_version = f"{major}.{minor}.{int(patch) + 1}"
                 log.info(
                     "Auto-incremented woob tag: %s → %s", current_tag, self.woob_version
                 )
 
         if self.woob_version:
-            self._update_pyproject_woob_tag()
+            if pyproject_content is None:
+                pyproject_content = (self.root_dir / "pyproject.toml").read_text(encoding="utf-8")
+            self._update_pyproject_woob_tag(pyproject_content)
 
         uv_lock = self.root_dir / "uv.lock"
         version_before = _parse_woob_version(uv_lock)
@@ -494,16 +511,14 @@ class WoobUpdateRelease:
         else:
             commit_msg = "feat(backend): Update woob in uv.lock file"
 
-        files_to_stage = ["uv.lock"]
-        if self.woob_version:
-            files_to_stage.append("pyproject.toml")
+        files_to_stage = ["uv.lock"] + (["pyproject.toml"] if self.woob_version else [])
         self.run_cmd(["git", "add"] + files_to_stage)
         self.run_cmd(["git", "commit", "-m", commit_msg])
         log.info("Committed: %s", commit_msg)
 
     def step4_debian_changelog(self) -> None:
         """Step 4: Prepend a Debian changelog entry directly into ``debian/changelog``."""
-        self._step_header(4, 5, "Debian Changelog")
+        self._step_header(4, 6, "Debian Changelog")
 
         git_email = self.run_cmd(
             ["git", "config", "user.email"], capture=True, check=False
@@ -545,7 +560,7 @@ class WoobUpdateRelease:
 
     def step5_finalize(self) -> None:
         """Step 5: Commit release files, create tag, push with confirmation."""
-        self._step_header(5, 5, "Finalize")
+        self._step_header(5, 6, "Finalize")
 
         files_to_stage = [
             "budgea/__init__.py",
@@ -715,6 +730,51 @@ class WoobUpdateRelease:
 # ---------------------------------------------------------------------------
 
 WOOB_REPO = Path("~/dev/woob").expanduser()
+
+_MODULE_TIMEOUT = 300
+
+
+def _run(
+    cmd: List[str],
+    *,
+    cwd: Optional[Path] = None,
+    capture: bool = False,
+    check: bool = True,
+    timeout: int = _MODULE_TIMEOUT,
+) -> subprocess.CompletedProcess:
+    """Module-level subprocess wrapper with consistent error handling.
+
+    :param cmd: command and its arguments
+    :param cwd: working directory for the subprocess
+    :param capture: capture stdout/stderr instead of streaming
+    :param check: exit on non-zero return code
+    :param timeout: seconds before the command is killed
+    :return: completed process result
+    :rtype: subprocess.CompletedProcess
+    """
+    log.debug("$ %s", " ".join(cmd))
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            capture_output=capture,
+            text=True,
+            check=check,
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        log.error("Command not found: '%s'. Is it installed and in PATH?", cmd[0])
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        log.error("Command timed out after %ds: %s", timeout, " ".join(cmd))
+        sys.exit(1)
+    except subprocess.CalledProcessError as exc:
+        log.error("Command failed (exit %d): %s", exc.returncode, " ".join(cmd))
+        if capture and exc.stdout:
+            log.error("stdout: %s", exc.stdout.strip())
+        if capture and exc.stderr:
+            log.error("stderr: %s", exc.stderr.strip())
+        sys.exit(1)
 WOOB_RELEASE_SCRIPT = WOOB_REPO / "dev_tools" / "release.sh"
 
 
@@ -740,11 +800,7 @@ def check_uv_version_for_woob() -> None:
         log.error("'uv' not found in PATH — cannot check version constraint '%s'.", constraint)
         sys.exit(1)
 
-    result = subprocess.run(["uv", "--version"], capture_output=True, text=True)
-    if result.returncode != 0:
-        log.error("Failed to run 'uv --version'.")
-        sys.exit(1)
-
+    result = _run(["uv", "--version"], capture=True)
     ver_match = re.search(r"uv\s+(\d[\d.]+)", result.stdout)
     if not ver_match:
         log.error("Could not parse uv version from: %s", result.stdout.strip())
@@ -779,13 +835,7 @@ def run_woob_release() -> None:
         sys.exit(1)
 
     log.info("Running Woob release script: %s", WOOB_RELEASE_SCRIPT)
-    result = subprocess.run(
-        [str(WOOB_RELEASE_SCRIPT)],
-        cwd=str(WOOB_REPO),
-    )
-    if result.returncode != 0:
-        log.error("Woob release script failed (exit code %d).", result.returncode)
-        sys.exit(result.returncode)
+    _run([str(WOOB_RELEASE_SCRIPT)], cwd=WOOB_REPO)
     log.info("Woob release forged successfully.")
 
 
@@ -802,20 +852,16 @@ def wait_for_woob_pipeline() -> None:
         log.error("'gh' CLI is required for --full. Install it from https://cli.github.com/")
         sys.exit(1)
 
-    tag = subprocess.run(
+    tag = _run(
         ["git", "describe", "--tags", "--abbrev=0", "master"],
-        cwd=str(WOOB_REPO),
-        capture_output=True,
-        text=True,
-        check=True,
+        cwd=WOOB_REPO,
+        capture=True,
     ).stdout.strip()
 
-    sha = subprocess.run(
+    sha = _run(
         ["git", "rev-parse", f"{tag}^{{}}"],
-        cwd=str(WOOB_REPO),
-        capture_output=True,
-        text=True,
-        check=True,
+        cwd=WOOB_REPO,
+        capture=True,
     ).stdout.strip()
 
     log.info(
@@ -825,16 +871,16 @@ def wait_for_woob_pipeline() -> None:
     # Actions may take a few seconds to register the run after the tag push.
     run_id: Optional[int] = None
     for attempt in range(18):  # up to 3 minutes (18 × 10 s)
-        result = subprocess.run(
+        result = _run(
             [
                 "gh", "run", "list",
                 "--commit", sha,
                 "--json", "databaseId,status,conclusion",
                 "--limit", "1",
             ],
-            cwd=str(WOOB_REPO),
-            capture_output=True,
-            text=True,
+            cwd=WOOB_REPO,
+            capture=True,
+            check=False,
         )
         runs: list = (
             json.loads(result.stdout)
@@ -854,9 +900,10 @@ def wait_for_woob_pipeline() -> None:
         sys.exit(1)
 
     log.info("Found pipeline run #%d — waiting for completion...", run_id)
-    result = subprocess.run(
+    result = _run(
         ["gh", "run", "watch", str(run_id), "--exit-status"],
-        cwd=str(WOOB_REPO),
+        cwd=WOOB_REPO,
+        check=False,
     )
     if result.returncode != 0:
         log.error(
