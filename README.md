@@ -60,7 +60,7 @@ python3 ~/dev/woob_deploy/woob_update_release.py --repo ~/dev/backend-fork
 | **0 - Woob release** | (`--full` only) Forges a Woob release by running `dev_tools/release.sh` in `~/dev/woob`, then waits for the GitHub Actions tag pipeline to pass before continuing |
 | **1 - Initialization** | Checks the working tree is clean, checks out `master`, pulls, creates branch `hotfix/X.Y.Z` |
 | **2 - Version bump** | Updates the version in `pyproject.toml`, `setup.py`, `budgea/__init__.py` |
-| **3 - Woob upgrade** | Runs `make update-lock/woob`, commits `uv.lock` with the new Woob version |
+| **3 - Woob upgrade** | Auto-increments the `woob-powens` tag in `pyproject.toml` (or uses `--woob-version` if supplied), runs `make update-lock/woob`, commits `uv.lock` (and `pyproject.toml` if changed) |
 | **4 - Debian changelog** | Prepends an entry directly into `debian/changelog`, pauses for review |
 | **5 - Finalize** | Commits the release files, creates the Git tag, prompts to push the branch and tag |
 | **6 - Pull Requests** | (Optional) Creates GitHub PRs to `master` and `develop` via `gh` |
@@ -68,12 +68,17 @@ python3 ~/dev/woob_deploy/woob_update_release.py --repo ~/dev/backend-fork
 ## CLI options
 
 ```
-usage: woob_update_release.py [-h] [--repo PATH] [--version X.Y.Z] [--full]
+usage: woob_update_release.py [-h] [--repo PATH] [--version X.Y.Z] [--woob-version X.Y.Z] [--full]
 
 options:
-  --repo PATH      Path to the backend git repository (default: ~/dev/backend)
-  --version X.Y.Z  Target version (default: auto-increment current patch)
-  --full           Forge a Woob release (~/dev/woob/dev_tools/release.sh) before updating backend
+  --repo PATH           Path to the backend git repository (default: ~/dev/backend)
+  --version X.Y.Z       Target version (default: auto-increment current patch)
+  --woob-version X.Y.Z  Woob tag to pin in pyproject.toml (e.g. 3.6.329).
+                        Requires the woob-powens entry to already use tag syntax.
+                        When omitted, the patch component of the current tag is
+                        auto-incremented, or pyproject.toml is left unchanged if
+                        branch syntax is used.
+  --full                Forge a Woob release (~/dev/woob/dev_tools/release.sh) before updating backend
 ```
 
 ## Expected backend repository structure
